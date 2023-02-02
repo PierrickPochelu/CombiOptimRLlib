@@ -1,5 +1,5 @@
 # CombiOptimRLlib
-Combinatorial Optimization with RLib such as the Bin Problem Packing.
+Combinatorial Optimization with RLib such as the Bin Packing Problem.
 
 See main.ipynb
 
