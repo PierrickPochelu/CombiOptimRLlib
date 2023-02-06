@@ -1,8 +1,8 @@
 from rl_factory import rl_agent_factory # Factory to build RL agents name:stirng->model:rllib
 from rl_factory import rl_hyperparameter_space_dict_factory
-from EnvBinPacking import EnvBinPacking
+from BinPacking.EnvBinPacking import EnvBinPacking, inv_prepro_state, inv_prepro_reward
 from AgentRL import AgentRLLIB
-from AgentHeuristic import AgentBestFit
+from BinPacking.AgentHeuristic import AgentBestFit
 
 # Online Bin Packing formulated as: https://epub.jku.at/obvulihs/download/pdf/6996324?originalFilename=true
 # In short:
@@ -38,10 +38,10 @@ if __name__=="__main__":
     rllib_trainer = rl_agent_factory(rl_name, hyperparameters, env_class, env_config=env_config)
 
 
-    agent=AgentRLLIB(rllib_trainer, env_class, env_config)
-    episodes=10
+    agent=AgentRLLIB(rllib_trainer, env_class, env_config, inv_prepro_state, inv_prepro_reward)
+    episodes=5
     for i in range(episodes):
-        for i in range(10):
+        for i in range(5):
             agent.train()
 
         score=agent.evaluate()
@@ -50,6 +50,6 @@ if __name__=="__main__":
 
 
     # Basic
-    agent = AgentBestFit(None, env_class, env_config)
+    agent = AgentBestFit(None, env_class, env_config, inv_prepro_state, inv_prepro_reward)
     score = agent.evaluate()
     print("Score:", score)

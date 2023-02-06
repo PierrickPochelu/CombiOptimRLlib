@@ -1,6 +1,6 @@
 import numpy as np
 from ray.tune import Trainable
-from EnvBinPacking import NB_MAXIMUM_BIN_LEVEL, inv_prepro_reward, inv_prepro_state
+from EnvBinPacking import NB_MAXIMUM_BIN_LEVEL
 
 VERBOSE=False
 def log(*args):
@@ -8,11 +8,13 @@ def log(*args):
         print(*args)
 
 class AgentBestFit(Trainable):
-    def __init__(self, trainer, env_class, env_config):
+    def __init__(self, trainer, env_class, env_config, inv_prepro_state, inv_prepro_reward):
         self.env_class = env_class
         self.env_config = env_config
         self.env = self.env_class(self.env_config)
         self.trainer = None  # No smart algorithm
+        self.inv_prepro_state=inv_prepro_state
+        self.inv_prepro_reward=inv_prepro_reward
 
     def train(self):
         self.reset(False)
@@ -24,20 +26,21 @@ class AgentBestFit(Trainable):
         return obs, self.env
 
     def evaluate(self):
-        prep_obs, env = self.reset(testing=True)
+        raw_obs, env = self.reset(testing=True)
+        prep_obs=self.inv_prepro_state(raw_obs)
         cumulated_rewards = 0
         done = False
         while not done:
             action = self.trainer_prediction(prep_obs)
             prep_obs, prep_reward, done, info = env.step(action)
-            raw_reward = inv_prepro_reward(prep_reward)
-            raw_obs = inv_prepro_state(prep_obs)
+            raw_reward = self.inv_prepro_reward(prep_reward)
+            raw_obs = self.inv_prepro_state(prep_obs)
             cumulated_rewards += raw_reward
         return {"cumulated_rewards": cumulated_rewards, "last_reward": raw_reward, "last_state": raw_obs,
                 "last_action": action}
 
     def trainer_prediction(self, prepro_obs):
-        raw_obs=inv_prepro_state(prepro_obs)
+        raw_obs=self.inv_prepro_state(prepro_obs)
         bin_freqs=raw_obs[:-1]
         next_item=raw_obs[-1]
 

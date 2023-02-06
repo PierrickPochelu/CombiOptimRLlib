@@ -191,7 +191,7 @@ class EnvBinPacking(gym.Env):
 
         self.cur_items = self.init_items.copy()
 
-        return prepro_state(self.state)
+        return self.state
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
