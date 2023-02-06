@@ -16,32 +16,36 @@ def log(*args):
 MAX_WEIGHT=4
 MAX_DURATION=4
 CAPACITY = 5
-NB_ITEMS = 9
-SUBMISSION_DEADLINE=27 # Items are submitted randomly from 0 to `SUBMISSION`
+NB_ITEMS = 100
+SUBMISSION_DEADLINE=50 # Items are submitted randomly from 0 to `SUBMISSION`
 
 
-BONUS_JOB_IS_DONE = 1000
+REWARD_BONUS_JOB_IS_DONE = 1000
 REWARD_PENALTY=1000 # hard constraint violated
 
 # A-B**2
 REWARD_PENALTY_PENDING_ITEM_A=0.1
-REWARD_PENALTY_PENDING_ITEM_B=0.1
+REWARD_PENALTY_PENDING_ITEM_B=0.01
+
+SOFTER=True
 
 
-
-# ITEM GENERATORS
-ITEMS=[]
-for i in range(NB_ITEMS):
-    submitted_date=np.random.randint(1, SUBMISSION_DEADLINE)
-    weight=np.random.randint(1,MAX_WEIGHT)
-    duration=np.random.randint(1,MAX_DURATION)
-    I=Item(start=-1, duration=duration, weight=weight, identifier=i, submitted_date=submitted_date)
-    ITEMS.append( I )
-ITEMS=sorted(ITEMS, key=lambda x:x.submitted_date, reverse=True) # Pop(-1) is O(1) so we sort them in reverse order
 
 COMPAR_FOR_BACKFILLING_SELECT=[util.cond_biggest, util.cond_smallest,
                                   util.cond_longest, util.cond_shortest,
                                   util.cond_latest]
+
+# ITEM GENERATORS
+def generate_items():
+    items=[]
+    for i in range(NB_ITEMS):
+        submitted_date=np.random.randint(1, SUBMISSION_DEADLINE)
+        weight=np.random.randint(1,MAX_WEIGHT)
+        duration=np.random.randint(1,MAX_DURATION)
+        I=Item(start=-1, duration=duration, weight=weight, identifier=i, submitted_date=submitted_date)
+        items.append( I )
+    items=sorted(items, key=lambda x:x.submitted_date, reverse=True) # Pop(-1) is O(1) so we sort them in reverse order
+    return items
 
 def inv_prepro_state(prep_state):
     return prep_state
@@ -64,7 +68,7 @@ def inv_prepro_reward(prep_action):
     raw_action = prep_action
     return raw_action
 
-class EnvKnapSack(gym.Env):
+class EnvScheduling(gym.Env):
     def __init__(self, env_config, seed=42):
         np.random.seed(seed)
 
@@ -93,7 +97,6 @@ class EnvKnapSack(gym.Env):
                            "pending_items":[],
                            "available_resource": np.zeros((MAX_DURATION,), dtype=float)}
         self.init_round = 0
-        self.init_items = ITEMS.copy() # items are already sorted according submitted_date
 
 
         self.ss=util.SchedulingSim(CAPACITY)
@@ -107,8 +110,8 @@ class EnvKnapSack(gym.Env):
         # "state" mentions the raw state
         self.info, self.reward, self.done, self.info= None, None, None, None
 
-
-        self.reset(testing=False)
+        self.testing=False
+        self.reset(testing=self.testing)
 
         try:
             assert (self.observation_space.contains(self.state))
@@ -149,7 +152,7 @@ class EnvKnapSack(gym.Env):
 
         # global stat on pending items
         embedding_pending_size = np.array([float(len(sorted_pending_items)) / NB_ITEMS], dtype=np.float32)
-        # %TODO give more info: mean(weight), std(weight), mean(duration), std(duration)
+        # %TODO give more info ? mean(weight), std(weight), mean(duration), std(duration)
         assert (len(embedding_pending_size) == 1)
 
         # concatenate embeddings
@@ -188,20 +191,39 @@ class EnvKnapSack(gym.Env):
                 action_penalty=0
                 done=False
             else:
-                # Crash we do no have enough resource OR I is None
-                action_penalty = -REWARD_PENALTY
-                done = True
+                if SOFTER:
+                    # TRANSITION -> Store the incoming item if possible
+                    if I is None:
+                        self.round += 1  # next step
+                    else:
+                        self.info["pending_items"].append(I)
+                    action_penalty = 0
+                    done = False
+                else:
+                    # TRANSITION -> Crash we do no have enough resource OR I is None
+                    action_penalty = -REWARD_PENALTY
+                    done = True
+
         else:
             a=action - 2  # the biggest fitting (any duration). When equality, takes the latest.
             comp=COMPAR_FOR_BACKFILLING_SELECT[a]
             BFI=util.get_fitting_item_according_cond(self.info["pending_items"],
-                                                   self.info["available_resource"][0],
+                                                   CAPACITY-self.ss.get_weight_at(self.round),
                                                    comp)
 
             if BFI is None:
-                # Unvalid action
-                action_penalty = -REWARD_PENALTY
-                done = True
+                if SOFTER:
+                    # TRANSITION -> Store the incoming item if possible
+                    if I is None:
+                        self.round += 1  # next step
+                    #else:
+                    #    self.info["pending_items"].append(I) # already done below
+                    action_penalty = 0
+                    done = False
+                else:
+                    # TRANSITION -> Unvalid action
+                    action_penalty = -REWARD_PENALTY
+                    done = True
             else:
                 # Launch BFI
                 done=False
@@ -227,14 +249,16 @@ class EnvKnapSack(gym.Env):
         else:
             self.done = len(self.items)==0 and len(self.info["pending_items"])==0 and self.info["available_resource"][0]==0
             if self.done:
-                bonus_job_is_done=BONUS_JOB_IS_DONE
+                final_eval=self.ss.evaluate(self.round)
+                bonus_job_is_done= REWARD_BONUS_JOB_IS_DONE * final_eval["mean_util"]
 
-
-
+                # Compute onloy for debugging
+                if self.testing:
+                    self.info.update(final_eval)
+                    self.info["solution"]=self.ss.get_table()
         # Reward
         self.reward = action_penalty + round_penalty + pending_job_penalty + bonus_job_is_done
 
-        # TODO: code to edit ?
         # re-sorted items (after action)
         self.items=sorted(self.items, key=lambda x:x.submitted_date, reverse=True)
         if len(self.items)>0 and self.items[-1].submitted_date==self.round:
@@ -249,8 +273,7 @@ class EnvKnapSack(gym.Env):
         self.info["available_resource"]=fixed_size
 
         # Additional information for debugging purpose
-        if VERBOSE:
-            self.info["round"]=self.round
+        self.info["round"]=self.round
 
         self.state=self.compute_state_for_rl(self.info)
         return self.state, self.info, self.reward, self.done
@@ -286,9 +309,10 @@ class EnvKnapSack(gym.Env):
         return prep_state, prep_reward, self.done, self.info
 
     def reset(self, testing=False):
+        self.testing=testing
         self.ss=util.SchedulingSim(CAPACITY)
         self.round = self.init_round
-        self.items = copy.deepcopy(self.init_items)
+        self.items = generate_items()
 
 
         self.reward = self.init_reward

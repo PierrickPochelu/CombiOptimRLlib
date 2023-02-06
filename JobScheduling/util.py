@@ -32,7 +32,7 @@ class SchedulingSim:
         """
         start, duration, weight, identifier = I.start, I.duration, I.weight, I.identifier
 
-        self.items.append((start, duration, weight, identifier))
+        self.items.append(I)
         increase_required_time = 0
         for t in range(start, start + duration, 1):
             while len(self.timeline_ressource) <= t:
@@ -44,13 +44,13 @@ class SchedulingSim:
                 self.timeline_ressource[t] += weight
             else:
                 # crash
-                return None
+                raise ValueError("Item overflows")
 
         return increase_required_time
 
     def can_fit(self, t, weight_item):
-        current_conso = self.timeline_ressource[t] if t < len(self.timeline_ressource) else 0.
-        return current_conso + weight_item < self.capacity
+        current_conso =  self.get_weight_at(t)
+        return current_conso + weight_item <= self.capacity
 
     def get_table(self):
         """ for debugging and usefull representation for measuring some metrics """
@@ -78,9 +78,12 @@ class SchedulingSim:
                 items.append(I)
         return items
 
+    def get_weight_at(self, t):
+        return self.timeline_ressource[t] if t < len(self.timeline_ressource) else 0.
+
     def evaluate(self, horizon):
         # ressource util
-        mean_util = np.mean(self.timeline_ressource[:horizon])
+        mean_util = np.mean(self.timeline_ressource[:horizon])/self.capacity
 
         # Average waiting
         wait = []

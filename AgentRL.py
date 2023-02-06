@@ -53,7 +53,8 @@ class AgentRLLIB():
                 "last_reward":raw_reward,
                 "last_state":raw_obs,
                 "last_action":action,
-                "done":done}
+                "done":done,
+                "info":str(info)}
 
     def save(self, checkpoint_dir):
         file_path=self.trainer.save(checkpoint_dir)
