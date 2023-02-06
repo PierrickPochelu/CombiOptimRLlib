@@ -19,6 +19,3 @@ Heuristics
 Tuning EASY-Backfilling Queues
 https://hal.science/hal-01522459/file/paper.pdf
 
-
-S'inspirer de:
-file:///home/pierrick/Downloads/Preliminary_Interference_Study_About_Job_Placement_and_Routing_Algorithms_in_the_Fat_Tree_Topology_for_HPC_Applications.pdf
